@@ -1,8 +1,3 @@
-"""
-AI-powered deep analysis module for resume evaluation
-Provides comprehensive AI insights when API key is available
-"""
-
 from openai import OpenAI
 import logging
 from .config import ATS_KEYWORDS
@@ -20,7 +15,14 @@ class AIResumeAnalyzer:
         self.client = None
         if api_key:
             self.client = OpenAI(api_key=api_key)
-    
+
+    def get_targeted_role_analysis(self, resume_text, target_role):
+        """Backward-compatible alias for role-specific comprehensive analysis."""
+        analysis = self.get_comprehensive_ai_analysis(resume_text, target_role)
+        print("\n=== AI Targeted Role Analysis ===\n", analysis, "\n=== END ===")
+        return analysis
+
+
     def set_api_key(self, api_key):
         """Set OpenAI API key for AI analysis"""
         self.api_key = api_key
@@ -29,13 +31,6 @@ class AIResumeAnalyzer:
     def get_comprehensive_ai_analysis(self, resume_text, target_role=None):
         """
         Get comprehensive AI analysis with detailed insights
-        
-        Args:
-            resume_text (str): Resume text content
-            target_role (str): Target job role for focused analysis
-            
-        Returns:
-            str: Comprehensive AI analysis with actionable insights
         """
         if not self.client:
             return "AI analysis requires OpenAI API key. Please configure your API key to access detailed AI insights."
@@ -57,24 +52,21 @@ class AIResumeAnalyzer:
             )
             
             analysis = response.choices[0].message.content.strip()
+            
+            # ✅ print + log so you see it in uvicorn logs
+            print("\n=== AI Comprehensive Analysis ===\n", analysis, "\n=== END ===")
             logger.info(f"Generated targeted {target_role} analysis successfully")
             return analysis
             
         except Exception as e:
             error_msg = f"Role-specific AI analysis unavailable: {str(e)}"
             logger.error(error_msg)
+            print(error_msg)
             return error_msg
-    
+
     def get_improvement_recommendations(self, resume_text, weaknesses_analysis):
         """
         Get AI-powered improvement recommendations based on identified weaknesses
-        
-        Args:
-            resume_text (str): Resume text content
-            weaknesses_analysis (list): List of identified weaknesses
-            
-        Returns:
-            str: AI-generated improvement recommendations
         """
         if not self.client:
             return "AI improvement recommendations require OpenAI API key."
@@ -104,20 +96,50 @@ class AIResumeAnalyzer:
             logger.error(error_msg)
             return error_msg
 
-    # ... (keep all your existing prompt creation methods as they are) ...
+    def _create_comprehensive_analysis_prompt(self, resume_text: str, target_role: str = None) -> str:
+        """
+        Build a detailed prompt for the comprehensive resume analysis.
+        Includes ATS keywords and optional target role.
+        """
+        ats_keywords_str = ", ".join(self.ats_keywords)
+        role_part = (
+            f"\nFocus the analysis on suitability for the '{target_role}' role." 
+            if target_role else ""
+        )
+        prompt = (
+            f"Analyze the following resume thoroughly.{role_part}\n"
+            f"Identify strengths, weaknesses, achievements, and alignment with ATS keywords.\n"
+            f"ATS Keywords to consider: {ats_keywords_str}\n\n"
+            f"Resume text:\n{resume_text}\n\n"
+            "Provide a detailed, structured analysis including:\n"
+            "- Key strengths & accomplishments\n"
+            "- Gaps or weaknesses\n"
+            "- ATS keyword matches and missing keywords\n"
+            "- Suggestions for improvement to better fit the role\n"
+            "- Overall rating (1-10) for ATS compatibility\n"
+        )
+        return prompt
+
+    def _get_role_specific_system_prompt(self, target_role: str = None) -> str:
+        """
+        Return the system message instructing the model on how to act.
+        """
+        if target_role:
+            return (
+                f"You are an experienced HR specialist and ATS expert evaluating resumes for {target_role} positions. "
+                "Give objective, detailed, and actionable feedback."
+            )
+        return (
+            "You are an experienced HR specialist and ATS expert evaluating resumes across multiple roles. "
+            "Give objective, detailed, and actionable feedback."
+        )
 
     def validate_api_connection(self):
-        """
-        Validate OpenAI API connection and key
-        
-        Returns:
-            tuple: (is_valid, message)
-        """
+        """Validate OpenAI API connection and key"""
         if not self.api_key:
             return False, "No API key provided"
         
         try:
-            # Simple test call to validate the API key
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": "Test"}],
@@ -138,22 +160,13 @@ class AIResumeAnalyzer:
     def get_analysis_cost_estimate(self, resume_text, target_role=None):
         """
         Estimate cost for AI analysis based on token usage
-        
-        Args:
-            resume_text (str): Resume text content
-            target_role (str): Optional target role
-            
-        Returns:
-            dict: Cost estimation details
         """
-        # Rough token estimation (1 token ≈ 4 characters)
         resume_tokens = len(resume_text) // 4
         prompt_tokens = 1000  # Average prompt size
         response_tokens = 1500  # Average response size
         
         total_tokens = resume_tokens + prompt_tokens + response_tokens
         
-        # GPT-3.5-turbo pricing (approximate)
         cost_per_1k_tokens = 0.002
         estimated_cost = (total_tokens / 1000) * cost_per_1k_tokens
 
@@ -172,5 +185,3 @@ class AIResumeAnalyzer:
                 'total_tokens': total_tokens
             }
         }
-
-
